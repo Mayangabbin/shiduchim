@@ -2,6 +2,45 @@ import pandas as pd
 import os
 import hashlib
 
+from googleapiclient.discovery import build
+
+from googleapiclient.http import MediaFileUpload
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+import os
+import pickle
+
+# Authenticate and create the Drive service
+def authenticate_drive():
+    SCOPES = ['https://www.googleapis.com/auth/drive.file']  # Permission to upload files
+    creds = None
+    if os.path.exists('token.pickle'):
+        with open('token.pickle', 'rb') as token:
+            creds = pickle.load(token)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open('token.pickle', 'wb') as token:
+            pickle.dump(creds, token)
+    return build('drive', 'v3', credentials=creds)
+
+# Upload a file to Google Drive
+def upload_to_drive(file_path, drive_service, parent_folder_id=None):
+    file_metadata = {
+        'name': os.path.basename(file_path),
+        'mimeType': 'application/vnd.google-apps.document',
+    }
+    if parent_folder_id:
+        file_metadata['parents'] = [parent_folder_id]
+    
+    media = MediaFileUpload(file_path, mimetype='text/plain')
+    uploaded_file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    print(f"Uploaded file {file_path} to Google Drive with ID: {uploaded_file.get('id')}")
+    return uploaded_file.get('id')
+
 print("Current Working Directory:", os.getcwd())
 
 # File paths
@@ -101,8 +140,11 @@ def generate_text(row):
     """ 
 
 
-# Process new responses
 
+# Authenticate Google Drive service
+drive_service = authenticate_drive()
+
+# Process new responses
 
 new_ids = []
 for index, row in responses.iterrows():
@@ -112,6 +154,13 @@ for index, row in responses.iterrows():
         output_file = f"{row['שם פרטי']}_{row['שם משפחה']}_{row['מספר הטלפון שלך']}.txt"
         with open(output_file, 'w', encoding='utf-8') as file:  
             file.write(summary)
+
+        
+        # Upload the file to Google Drive
+        file_id = upload_to_drive(output_file, drive_service)
+        print(f"Uploaded profile for {row['שם פרטי']} {row['שם משפחה']} to Google Drive with ID: {file_id}")
+        
+
         print(f"Profile for {row['שם פרטי']}{row['שם משפחה']}{row['מספר הטלפון שלך']} saved to {output_file}")
         new_ids.append(response_id)
 

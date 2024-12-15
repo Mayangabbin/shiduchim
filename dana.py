@@ -96,10 +96,12 @@ def generate_text(row):
     
     משהו נוסף שתרצה להוסיף בהקשר של מה אתה מחפש?:
     {row['משהו נוסף שתרצה להוסיף בהקשר של מה אתה מחפש?']}
-    """
+    """ 
 
 
 # Process new responses
+
+
 new_ids = []
 for index, row in responses.iterrows():
     response_id = row['Response ID']

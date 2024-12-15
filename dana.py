@@ -2,6 +2,8 @@ import pandas as pd
 import os
 import hashlib
 
+print("Current Working Directory:", os.getcwd())
+
 # File paths
 file_path = "responses.csv" # Input CSV file path
 updated_file_path = 'responses_with_ids.csv'  # Updated CSV with Response IDs

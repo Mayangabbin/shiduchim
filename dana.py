@@ -7,6 +7,9 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 import os
 import pickle
+from docx import Document  # Import the python-docx library to create Word files
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 # Authenticate and create the Drive service
 def authenticate_drive():
@@ -29,13 +32,12 @@ def authenticate_drive():
 def upload_to_drive(file_path, drive_service, parent_folder_id=None):
     file_metadata = {
         'name': os.path.basename(file_path),
-        #'mimeType': 'application/vnd.google-apps.document',
-        'mimeType': "text/plain"
+        'mimeType': 'application/vnd.google-apps.document'  # Set mimeType for Google Docs
     }
     if parent_folder_id:
         file_metadata['parents'] = [parent_folder_id]
     
-    media = MediaFileUpload(file_path, mimetype='text/plain')
+    media = MediaFileUpload(file_path, mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')  # Upload as DOCX
     uploaded_file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
     print(f"Uploaded file {file_path} to Google Drive with ID: {uploaded_file.get('id')}")
     return uploaded_file.get('id')
@@ -50,8 +52,7 @@ responses = pd.read_csv(file_path)
 
 # Define a function to generate a unique Response ID
 def generate_response_id(row):
-    # Use fields that uniquely identify a response; adjust according to your CSV structure
-    unique_string = f"{row['שם פרטי']}{row['שם משפחה']}{row['חותמת זמן']}"  # Example fields
+    unique_string = f"generated_{row['שם פרטי']}{row['שם משפחה']}{row['חותמת זמן']}"  # Example fields
     return hashlib.md5(unique_string.encode()).hexdigest()  # Create a unique hash
 
 # Check if Response ID column already exists; if not, add it
@@ -136,36 +137,51 @@ def generate_text(row):
     {row['משהו נוסף שתרצה להוסיף בהקשר של מה אתה מחפש?']}
     """ 
 
-
+# Function to add a paragraph with RTL alignment
+def add_rtl_paragraph(doc, text):
+    # Add paragraph
+    para = doc.add_paragraph(text)
+    
+    # Set alignment to right
+    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    
+    # Set the RTL direction (this requires setting the 'right-to-left' property)
+    run = para.add_run()
+    run._r.set('rtl', '1')  # This sets the text direction to right-to-left
+    
+    return para
 
 # Authenticate Google Drive service
 drive_service = authenticate_drive()
 
 # Process new responses
-
 new_ids = []
 for index, row in responses.iterrows():
     response_id = row['Response ID']
     if response_id not in processed_ids:  # Process only unprocessed responses
         summary = generate_text(row)
-        output_file = f"{row['שם פרטי']}_{row['שם משפחה']}_{row['מספר הטלפון שלך']}.txt"
-        with open(output_file, 'w', encoding='utf-8') as file:  
-            file.write(summary)
-
         
-        # Upload the file to Google Drive
+        # Create a .docx file using python-docx
+        doc = Document()
+
+        # Add the content as RTL paragraphs
+        add_rtl_paragraph(doc, summary)
+        
+        # Save the document locally as a .docx file
+        output_file = f"generated_{row['שם פרטי']}_{row['שם משפחה']}_{row['מספר הטלפון שלך']}.docx"
+        doc.save(output_file)
+
+        # Upload the file to Google Drive as a Google Doc
         file_id = upload_to_drive(output_file, drive_service)
         print(f"Uploaded profile for {row['שם פרטי']} {row['שם משפחה']} to Google Drive with ID: {file_id}")
         
-
         # Optionally delete the local file after uploading
         os.remove(output_file)
-
         print(f"Profile for {row['שם פרטי']}{row['שם משפחה']}{row['מספר הטלפון שלך']} saved to {output_file}")
+        
         new_ids.append(response_id)
 
 # Update the processed IDs file
 if new_ids:
     with open(processed_ids_file, 'a') as file:
         file.write('\n'.join(new_ids) + '\n')
-

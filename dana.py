@@ -2,14 +2,14 @@ import pandas as pd
 import os
 import hashlib
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
-import os
 import pickle
 from docx import Document  # Import the python-docx library to create Word files
-from docx.shared import Pt
+from docx.shared import Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+import io
 
 # Authenticate and create the Drive service
 def authenticate_drive():
@@ -41,6 +41,23 @@ def upload_to_drive(file_path, drive_service, parent_folder_id=None):
     uploaded_file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
     print(f"Uploaded file {file_path} to Google Drive with ID: {uploaded_file.get('id')}")
     return uploaded_file.get('id')
+
+# Download an image from Google Drive
+def download_image_from_drive(file_id, drive_service, destination_path):
+    request = drive_service.files().get_media(fileId=file_id)
+    fh = io.FileIO(destination_path, 'wb')
+    downloader = MediaIoBaseDownload(fh, request)
+    done = False
+    while done is False:
+        status, done = downloader.next_chunk()
+    print(f"Downloaded image from Google Drive with ID {file_id} to {destination_path}")
+
+# Insert image into the Word document
+def add_image_to_doc(doc, image_path):
+    # Add image to document (adjust size as needed)
+    doc.add_picture(image_path, width=Inches(3.0))
+    doc.add_paragraph("\n")  # Add space after the image
+    print(f"Image {image_path} added to document.")
 
 # File paths
 file_path = "responses.csv" # Input CSV file path
@@ -167,6 +184,14 @@ for index, row in responses.iterrows():
 
         # Add the content as RTL paragraphs
         add_rtl_paragraph(doc, summary)
+        
+        # Check if there's an image to insert (e.g., if there's an image file ID in the row)
+        if 'Image ID' in row and pd.notna(row['Image ID']):
+            image_id = row['Image ID']
+            image_path = f"image_{response_id}.jpg"
+            download_image_from_drive(image_id, drive_service, image_path)
+            add_image_to_doc(doc, image_path)
+            os.remove(image_path)  # Optionally remove the image after adding it to the document
         
         # Save the document locally as a .docx file
         output_file = f"generated_{row['שם פרטי']}_{row['שם משפחה']}_{row['מספר הטלפון שלך']}.docx"

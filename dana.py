@@ -1,9 +1,7 @@
 import pandas as pd
 import os
 import hashlib
-
 from googleapiclient.discovery import build
-
 from googleapiclient.http import MediaFileUpload
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -31,7 +29,8 @@ def authenticate_drive():
 def upload_to_drive(file_path, drive_service, parent_folder_id=None):
     file_metadata = {
         'name': os.path.basename(file_path),
-        'mimeType': 'application/vnd.google-apps.document',
+        #'mimeType': 'application/vnd.google-apps.document',
+        'mimeType': "text/plain"
     }
     if parent_folder_id:
         file_metadata['parents'] = [parent_folder_id]
@@ -40,8 +39,6 @@ def upload_to_drive(file_path, drive_service, parent_folder_id=None):
     uploaded_file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
     print(f"Uploaded file {file_path} to Google Drive with ID: {uploaded_file.get('id')}")
     return uploaded_file.get('id')
-
-print("Current Working Directory:", os.getcwd())
 
 # File paths
 file_path = "responses.csv" # Input CSV file path
@@ -160,6 +157,9 @@ for index, row in responses.iterrows():
         file_id = upload_to_drive(output_file, drive_service)
         print(f"Uploaded profile for {row['שם פרטי']} {row['שם משפחה']} to Google Drive with ID: {file_id}")
         
+
+        # Optionally delete the local file after uploading
+        os.remove(output_file)
 
         print(f"Profile for {row['שם פרטי']}{row['שם משפחה']}{row['מספר הטלפון שלך']} saved to {output_file}")
         new_ids.append(response_id)

@@ -59,6 +59,12 @@ def add_image_to_doc(doc, image_path):
     doc.add_paragraph("\n")  # Add space after the image
     print(f"Image {image_path} added to document.")
 
+# Extract file IDs from Google Drive URLs
+def extract_file_ids(image_urls):
+    urls = image_urls.split(', ')
+    file_ids = [url.split('id=')[-1] for url in urls if 'id=' in url]
+    return file_ids
+
 # File paths
 file_path = "responses.csv" # Input CSV file path
 updated_file_path = 'responses_with_ids.csv'  # Updated CSV with Response IDs
@@ -154,7 +160,6 @@ def generate_text(row):
     {row['האם אתה מוכן לשלוח תמונה שלך לבחורה במקרה והיא מעוניינת בכך? ']}
     
     """ 
-
 # Function to add a paragraph with RTL alignment
 def add_rtl_paragraph(doc, text):
     # Add paragraph
@@ -185,13 +190,16 @@ for index, row in responses.iterrows():
         # Add the content as RTL paragraphs
         add_rtl_paragraph(doc, summary)
         
-        # Check if there's an image to insert (e.g., if there's an image file ID in the row)
-        if 'Image ID' in row and pd.notna(row['Image ID']):
-            image_id = row['Image ID']
-            image_path = f"image_{response_id}.jpg"
-            download_image_from_drive(image_id, drive_service, image_path)
-            add_image_to_doc(doc, image_path)
-            os.remove(image_path)  # Optionally remove the image after adding it to the document
+        # Process images in the "צרף בבקשה שתי תמונות שלך" column
+        if 'צרף בבקשה שתי תמונות שלך' in row and pd.notna(row['צרף בבקשה שתי תמונות שלך']):
+            image_urls = row['צרף בבקשה שתי תמונות שלך']
+            file_ids = extract_file_ids(image_urls)
+            
+            for file_id in file_ids:
+                image_path = f"image_{file_id}.jpg"
+                download_image_from_drive(file_id, drive_service, image_path)
+                add_image_to_doc(doc, image_path)
+                os.remove(image_path)  # Optionally remove the image after adding it to the document
         
         # Save the document locally as a .docx file
         output_file = f"generated_{row['שם פרטי']}_{row['שם משפחה']}_{row['מספר הטלפון שלך']}.docx"

@@ -7,10 +7,11 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 import pickle
 from docx import Document  # Import the python-docx library to create Word files
-from docx.shared import Pt, Inches
+from docx.shared import Pt, Inches, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import io
 import google.generativeai as genai
+import re
 
 # Authenticate and create the Drive service
 def authenticate_drive():
@@ -31,6 +32,18 @@ def authenticate_drive():
         with open('token.pickle', 'wb') as token:
             pickle.dump(creds, token)
     return build('drive', 'v3', credentials=creds)
+
+# Function to download the Google Sheets file as CSV
+def download_csv_from_drive(file_id, drive_service, destination_path):
+    # Export the Google Sheet as CSV
+    request = drive_service.files().export_media(fileId=file_id, mimeType='text/csv')
+    fh = io.FileIO(destination_path, 'wb')
+    downloader = MediaIoBaseDownload(fh, request)
+    
+    done = False
+    while done is False:
+        status, done = downloader.next_chunk()
+    print(f"Downloaded CSV from Google Drive with File ID {file_id} to {destination_path}")
 
 # Upload a file to Google Drive
 def upload_to_drive(file_path, drive_service, parent_folder_id=None):
@@ -59,26 +72,44 @@ def download_image_from_drive(file_id, drive_service, destination_path):
 # Insert image into the Word document
 def add_image_to_doc(doc, image_path):
     # Add image to document (adjust size as needed)
-    doc.add_picture(image_path, width=Inches(3.0))
+    doc.add_picture(image_path, width=Inches(1.5))
     doc.add_paragraph("\n")  # Add space after the image
     print(f"Image {image_path} added to document.")
+
+def add_images_side_by_side(doc, image_paths):
+    # Create a new paragraph for the images
+    paragraph = doc.add_paragraph()
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER  # Center-align the paragraph
+    
+    for image_path in image_paths:
+        run = paragraph.add_run()
+        run.add_picture(image_path, height=Cm(5))  # Add image to the run
+        run.add_text(" ")  # Add a space between images (optional)
 
 # Extract file IDs from Google Drive URLs
 def extract_file_ids(image_urls):
     urls = image_urls.split(', ')
     file_ids = [url.split('id=')[-1] for url in urls if 'id=' in url]
-    print (file_ids)
     return file_ids
 
 # File paths
-file_path = "responses.csv" # Input CSV file path
+responses_path = "responses1.csv" # Input CSV file path
 updated_file_path = 'responses_with_ids.csv'  # Updated CSV with Response IDs
 processed_ids_file = 'processed_ids.txt'  # File to track processed Response IDs
 
 gemini_api_key = "AIzaSyD6y0TKHwbHieDps-Kjamtb-2cTYxvQBHk"
 
+# Example usage:
+file_id = "1YYMjOniotZhq_32kCHKxXSObYOO3UHB0KO-FFvuD5hY"  # Replace with the actual File ID of your Google Sheet
+
+# Authenticate Google Drive service
+drive_service = authenticate_drive()
+
+# Download the CSV
+download_csv_from_drive(file_id, drive_service, responses_path)
+
 # Load the responses CSV file
-responses = pd.read_csv(file_path)
+responses = pd.read_csv(responses_path)
 
 # Define a function to generate a unique Response ID
 def generate_response_id(row):
@@ -103,7 +134,26 @@ def improve_text_with_gemini(api_key, text):
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-1.5-flash")
     role_content = """
-אתה כותב טקסטים בעברית באופן מקצועי, תוך שמירה קפדנית על מבנה של פסקאות וכותרות משנה כפי שהן ניתנות. המטרה היא לשפר את הניסוח כך שיהיה טבעי, זורם וברור יותר, אך תוך שמירה על מבנה וסדר התוכן, כותרות המשנה, וחלוקה לפסקאות. אין לשנות את כותרות המשנה או להוסיף כותרות חדשות, רק לשפר את הניסוח של הטקסט תחתיהן. לא לשנות את שמות הפסקאות. ההמסמך צריך להיראות כך-
+אתה כותב טקסטים בעברית בצורה מקצועית, תוך הקפדה על שמירת המבנה המקורי של הכותרות והפסקאות. הכותרות מוגדרות מראש, ואין לשנות אותן. יש לשפר רק את התוכן מתחת לכל כותרת תוך שמירה על כבוד לסגנון המקורי.
+
+כותרות המשנה הן:
+1. שם  
+2. תחנות בחיים  
+3. על המשפחה  
+4. אופי  
+5. שאיפות, אידיאלים ותכנונים לעתיד  
+6. רמה וסגנון תורני  
+7. מה אתה מחפש- ובתוכה כותרות משנה של: אופי, טווח גילאים, אפסול חיצונית על, האם מוכן לשלוח תמונה
+
+
+עליך:
+- להשאיר את הכותרות כפי שהן, ללא שינוי.
+- להימנע מתוספות שאינן קיימות בטקסט המקורי, ולשנות אותו כמה שפחות, לשנות אותו אך ורק כשיש בעיה תחבירית
+- כדי לסמן כותרות תתחיל שורה במקף ואז רווח בודד ללא ירידת שורה
+- לא לשנות את הטקסט!!!! רק לתקן טעויות. להשאיר את הטקסט במילים של הכותב רק לתקן טעויות תחביר
+- כמה שפחות לשנות
+
+בבקשה שפר את הטקסט הבא לפי ההנחיות.
 
 """
     chat = model.start_chat(
@@ -188,11 +238,23 @@ def generate_text(row):
     improved_text = improve_text_with_gemini(gemini_api_key, template_text)
     return improved_text
 
+# Function to change font in a paragraph
+def change_font(paragraph, font_name="Arial", font_size=12):
+    # Loop through all runs in the paragraph
+    for run in paragraph.runs:
+        run.font.name = font_name  # Set the font
+        run.font.size = Pt(font_size)  # Set the font size (in points)
+        run.font.bold = False  # Optionally set the font to not bold
+        run.font.italic = False  # Optionally set the font to not italic
+        run.font.underline = False  # Optionally set the font to not underlined
+
 # Function to add a paragraph with RTL alignment
 def add_rtl_paragraph(doc, text):
     # Add paragraph
     para = doc.add_paragraph(text)
     
+    change_font(para, "arial", font_size=12)
+
     # Set alignment to right
     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     
@@ -201,6 +263,11 @@ def add_rtl_paragraph(doc, text):
     run._r.set('rtl', '1')  # This sets the text direction to right-to-left
     
     return para
+
+# Function to sanitize the file name
+def sanitize_filename(filename):
+    # Replace invalid characters with underscores or remove them
+    return re.sub(r'[\\/*?:"<>|]', '_', filename)
 
 # Authenticate Google Drive service
 drive_service = authenticate_drive()
@@ -216,32 +283,40 @@ for index, row in responses.iterrows():
         doc = Document()
         
         # Process images in the "צרף בבקשה שתי תמונות שלך" column
+        # Process images in the "צרף בבקשה שתי תמונות שלך" column
         if 'צרף בבקשה שתי תמונות שלך' in row and pd.notna(row['צרף בבקשה שתי תמונות שלך']):
-            print("תמונה")
+            print("Processing images...")
             image_urls = row['צרף בבקשה שתי תמונות שלך']
             file_ids = extract_file_ids(image_urls)
             
+            image_paths = []  # Collect all image paths
             for file_id in file_ids:
-                print ("^^^^^^^^^^^^^^^^^^^^")
-                print (file_id)
                 image_path = f"image_{file_id}.jpg"
                 download_image_from_drive(file_id, drive_service, image_path)
-                add_image_to_doc(doc, image_path)
-                os.remove(image_path)  # Optionally remove the image after adding it to the document
+                image_paths.append(image_path)
+
+            # Add images side by side without a table
+            add_images_side_by_side(doc, image_paths)
+
+            # Clean up downloaded images
+            for image_path in image_paths:
+                os.remove(image_path)
+
 
         # Add the content as RTL paragraphs
         add_rtl_paragraph(doc, summary)
         
         # Save the document locally as a .docx file
         output_file = f"generated_{row['שם פרטי']}_{row['שם משפחה']}_{row['מספר הטלפון שלך']}.docx"
-        doc.save(output_file)
+        safe_output_file = sanitize_filename(output_file)
+        doc.save(safe_output_file)
 
         # Upload the file to Google Drive as a Google Doc
-        file_id = upload_to_drive(output_file, drive_service)
+        file_id = upload_to_drive(safe_output_file, drive_service)
         print(f"Uploaded profile for {row['שם פרטי']} {row['שם משפחה']} to Google Drive with ID: {file_id}")
         
         # Optionally delete the local file after uploading
-        os.remove(output_file)
+        os.remove(safe_output_file)
         print(f"Profile for {row['שם פרטי']}{row['שם משפחה']}{row['מספר הטלפון שלך']} saved to {output_file}")
         
         new_ids.append(response_id)

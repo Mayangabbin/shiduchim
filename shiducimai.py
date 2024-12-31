@@ -137,22 +137,27 @@ def improve_text_with_gemini(api_key, text):
 אתה כותב טקסטים בעברית בצורה מקצועית, תוך הקפדה על שמירת המבנה המקורי של הכותרות והפסקאות. הכותרות מוגדרות מראש, ואין לשנות אותן. יש לשפר רק את התוכן מתחת לכל כותרת תוך שמירה על כבוד לסגנון המקורי.
 
 כותרות המשנה הן:
-1. שם  
-2. תחנות בחיים  
-3. על המשפחה  
-4. אופי  
-5. שאיפות, אידיאלים ותכנונים לעתיד  
-6. רמה וסגנון תורני  
-7. מה אתה מחפש- ובתוכה כותרות משנה של: אופי, טווח גילאים, אפסול חיצונית על, האם מוכן לשלוח תמונה
-
+1. :שם
+2. :תחנות בחיים
+3. :על המשפחה
+4. :אופי
+5. :שאיפות, אידיאלים ותכנונים לעתיד
+6. :רמה וסגנון תורני
+7. :מה אתה מחפש
+8. :הכי חשוב לי
+9. :בהרחבה
+10. :מבחינה תורנית
+11. :אפסול חיצונית על
+12. :טווח גילאים
+13. :האם מוכן לשלוח תמונה
 
 עליך:
 - להשאיר את הכותרות כפי שהן, ללא שינוי.
 - להימנע מתוספות שאינן קיימות בטקסט המקורי, ולשנות אותו כמה שפחות, לשנות אותו אך ורק כשיש בעיה תחבירית
-- כדי לסמן כותרות תתחיל שורה במקף ואז רווח בודד ללא ירידת שורה
-- לא לשנות את הטקסט!!!! רק לתקן טעויות. להשאיר את הטקסט במילים של הכותב רק לתקן טעויות תחביר
+- כדי לסמן כותרות תתחיל שורה במקף ואז רווח בודד ולאחר הכותרת נקודותיים ואז ירידת שורה 
+- לא לשנות את הטקסט!!!! רק לתקן טעויות תחביר
 - כמה שפחות לשנות
-
+- כמובן שאם יש nan אז לא לכלול אותו
 בבקשה שפר את הטקסט הבא לפי ההנחיות.
 
 """
@@ -208,7 +213,7 @@ def generate_text(row):
     מה אתה מחפש:
     {row['תכונות שמהותיות וקריטיות לך בבחורה']}
     
-    {row['וקצת יותר בהרחבה..']}
+    בהרחבה: {row['וקצת יותר בהרחבה..']}
 
     הכי חשוב לי-
     {row['לסיכום אם היית צריך לציין בנקודות מהם שלושת הדברים שהכי חשובים לך בבחורה, מה הם?']}
@@ -236,6 +241,7 @@ def generate_text(row):
     """ 
     # Use Gemini API to refine the text
     improved_text = improve_text_with_gemini(gemini_api_key, template_text)
+
     return improved_text
 
 # Function to change font in a paragraph
@@ -249,11 +255,17 @@ def change_font(paragraph, font_name="Arial", font_size=12):
         run.font.underline = False  # Optionally set the font to not underlined
 
 # Function to add a paragraph with RTL alignment
-def add_rtl_paragraph(doc, text):
+# Function to add a paragraph with RTL alignment
+def add_rtl_paragraph(doc, text, is_headline=False):
     # Add paragraph
     para = doc.add_paragraph(text)
     
     change_font(para, "arial", font_size=12)
+
+    # If it's a headline, set the text to bold
+    if is_headline:
+        for run in para.runs:
+            run.font.bold = True
 
     # Set alignment to right
     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -264,10 +276,11 @@ def add_rtl_paragraph(doc, text):
     
     return para
 
+
 # Function to sanitize the file name
 def sanitize_filename(filename):
     # Replace invalid characters with underscores or remove them
-    return re.sub(r'[\\/*?:"<>|]', '_', filename)
+    return re.sub(r'[\\/*?:"<>|]', '', filename)
 
 # Authenticate Google Drive service
 drive_service = authenticate_drive()
@@ -281,7 +294,7 @@ for index, row in responses.iterrows():
         
         # Create a .docx file using python-docx
         doc = Document()
-        
+
         # Process images in the "צרף בבקשה שתי תמונות שלך" column
         # Process images in the "צרף בבקשה שתי תמונות שלך" column
         if 'צרף בבקשה שתי תמונות שלך' in row and pd.notna(row['צרף בבקשה שתי תמונות שלך']):
@@ -302,9 +315,24 @@ for index, row in responses.iterrows():
             for image_path in image_paths:
                 os.remove(image_path)
 
+        # List of headers that should be bold
+        headlines = ["-", "\n-"]
 
-        # Add the content as RTL paragraphs
-        add_rtl_paragraph(doc, summary)
+        # Split the text into paragraphs
+        paragraphs = summary.split(":\n")
+        print(paragraphs)
+        # Loop through the paragraphs
+        for paragraph in paragraphs:
+            # Check if the paragraph is a headline
+            for headline in headlines:
+                if paragraph.startswith(headline):
+                    # Make the headline bold
+                    add_rtl_paragraph(doc, paragraph, is_headline=True)
+                    print("bold")
+                    break
+            else:
+                # Regular text (not a headline)
+                add_rtl_paragraph(doc, paragraph, is_headline=False)
         
         # Save the document locally as a .docx file
         output_file = f"generated_{row['שם פרטי']}_{row['שם משפחה']}_{row['מספר הטלפון שלך']}.docx"

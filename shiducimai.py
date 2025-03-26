@@ -11,26 +11,21 @@ from docx.shared import Pt, Inches, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import io
 import google.generativeai as genai
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
 import re
 
 # Authenticate and create the Drive service
 def authenticate_drive():
-    SCOPES = [
-    'https://www.googleapis.com/auth/drive.readonly',  # For downloading files
-    'https://www.googleapis.com/auth/drive.file'      # For uploading files
-]
-    creds = None
-    if os.path.exists('token.pickle'):
-        with open('token.pickle', 'rb') as token:
-            creds = pickle.load(token)
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file('./credentials.json', SCOPES)
-            creds = flow.run_local_server(port=0)
-        with open('token.pickle', 'wb') as token:
-            pickle.dump(creds, token)
+    # Path to your service account JSON key
+    SERVICE_ACCOUNT_FILE = "./credentials.json"
+
+    SCOPES = ['https://www.googleapis.com/auth/drive']
+
+    # Authenticate using service account
+    creds = service_account.Credentials.from_service_account_file(
+        SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+
     return build('drive', 'v3', credentials=creds)
 
 # Function to download the Google Sheets file as CSV
@@ -46,7 +41,7 @@ def download_csv_from_drive(file_id, drive_service, destination_path):
     print(f"Downloaded CSV from Google Drive with File ID {file_id} to {destination_path}")
 
 # Upload a file to Google Drive
-def upload_to_drive(file_path, drive_service, parent_folder_id=None):
+def upload_to_drive(file_path, drive_service, parent_folder_id='1uoXnNThQwdB-C6IeKV7NKm-kX-22B8t0'):
     file_metadata = {
         'name': os.path.basename(file_path),
         'mimeType': 'application/vnd.google-apps.document'  # Set mimeType for Google Docs

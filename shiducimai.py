@@ -14,6 +14,9 @@ import google.generativeai as genai
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 import re
+from PIL import Image
+import pyheif
+
 
 # Authenticate and create the Drive service
 def authenticate_drive():
@@ -62,6 +65,34 @@ def download_image_from_drive(file_id, drive_service, destination_path):
     done = False
     while done is False:
         status, done = downloader.next_chunk()
+
+    try:
+        # Try opening the image with Pillow
+        try:
+            img = Image.open(destination_path)
+            print(f"Image format detected by Pillow: {img.format}")
+        except Exception as e:
+            print(f"Error opening with Pillow: {e}")
+            # If Pillow fails, attempt to open with pyheif
+            print("Attempting to open with pyheif (HEIF format)")
+            heif_file = pyheif.read(destination_path)
+            img = Image.frombytes(
+                heif_file.mode, heif_file.size, heif_file.data, "raw", heif_file.mode, heif_file.stride, heif_file.size[1]
+            )
+            print("Opened HEIF image successfully.")
+
+        # Ensure image is converted to a standard format (JPEG)
+        if img.format is None:  # This means it's still in raw format
+            print("Image format is None, converting to RGB and saving as JPEG")
+            img = img.convert("RGB")  # Convert to RGB to save as JPEG
+            img.save(destination_path, "JPEG")
+            print(f"Converted image saved as {destination_path}")
+        else:
+            print(f"Image format is {img.format}, no conversion needed.")
+
+    except Exception as e:
+        print(f"Error processing the image: {e}")
+
     print(f"Downloaded image from Google Drive with ID {file_id} to {destination_path}")
 
 # Insert image into the Word document
@@ -78,6 +109,7 @@ def add_images_side_by_side(doc, image_paths):
     
     for image_path in image_paths:
         run = paragraph.add_run()
+        print (f"addind img {image_path} to file")
         run.add_picture(image_path, height=Cm(5))  # Add image to the run
         run.add_text(" ")  # Add a space between images (optional)
 
@@ -258,9 +290,9 @@ def add_rtl_paragraph(doc, text, is_headline=False):
     change_font(para, "arial", font_size=12)
 
     # If it's a headline, set the text to bold
-    if is_headline:
-        for run in para.runs:
-            run.font.bold = True
+#    if is_headline:
+#        for run in para.runs:
+#            run.font.bold = True
 
     # Set alignment to right
     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -300,6 +332,7 @@ for index, row in responses.iterrows():
             image_paths = []  # Collect all image paths
             for file_id in file_ids:
                 image_path = f"image_{file_id}.jpg"
+                print(f"preparing to download image_{file_id}.jpg")
                 download_image_from_drive(file_id, drive_service, image_path)
                 image_paths.append(image_path)
 
@@ -315,7 +348,7 @@ for index, row in responses.iterrows():
 
         # Split the text into paragraphs
         paragraphs = summary.split(":\n")
-        print(paragraphs)
+#        print(paragraphs)
         # Loop through the paragraphs
         for paragraph in paragraphs:
             # Check if the paragraph is a headline
